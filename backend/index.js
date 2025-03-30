@@ -1,15 +1,17 @@
 const express = require('express');
 const mysql = require('mysql2');
+const cors = require('cors');
 const app = express();
 const PORT = 5000;
 
 app.use(express.json());
+app.use(cors()); // Enable CORS for all routes
 
 // MySQL connection
 const db = mysql.createConnection({
   host: 'localhost',
   user: 'root',
-  password: 'mysql', // Default AMPPS password
+  password: 'mysql',
   database: 'urban_parking'
 });
 
@@ -30,7 +32,6 @@ app.get('/api/parking', (req, res) => {
   });
 });
 
-// Test endpoint
 app.get('/', (req, res) => {
   res.send('Urban Parking Finder API is running!');
 });
