@@ -18,6 +18,19 @@ db.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
+// API endpoint to fetch all parking spots
+app.get('/api/parking', (req, res) => {
+  const query = 'SELECT * FROM parking_spots WHERE status = "active"';
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json(results);
+  });
+});
+
+// Test endpoint
 app.get('/', (req, res) => {
   res.send('Urban Parking Finder API is running!');
 });
