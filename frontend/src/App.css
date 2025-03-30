@@ -73,4 +73,55 @@ input {
 .booking-history li {
   padding: 10px;
   border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cancel-btn {
+  background-color: #f44336;
+  margin-top: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Spinner styles */
+.spinner {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+/* ...existing styles... */
+
+.delete-btn {
+  background-color: #d32f2f;
+  margin-left: 10px;
+}
+
+.admin-panel {
+  margin-top: 20px;
+  text-align: left;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.admin-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-panel input {
+  width: 100%;
 }

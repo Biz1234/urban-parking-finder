@@ -6,8 +6,7 @@ const jwt = require('jsonwebtoken');
 const http = require('http');
 const { Server } = require('socket.io');
 const app = express();
- 
- 
+
 const PORT = 5000;
 const JWT_SECRET = 'your-secret-key'; // Change this in production
 
@@ -31,12 +30,11 @@ db.connect((err) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173', // Allow front-end origin
-    methods: ['GET', 'POST']
+    origin: 'http://localhost:5173',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
   }
 });
 
-// WebSocket connection
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
   socket.on('disconnect', () => {
@@ -56,6 +54,12 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Middleware to check if user is admin
+const isAdmin = (req, res, next) => {
+  if (!req.user.is_admin) return res.status(403).json({ error: 'Admin access required' });
+  next();
+};
+
 // Register a new user
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
@@ -63,7 +67,7 @@ app.post('/api/register', async (req, res) => {
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const query = 'INSERT INTO users (username, password) VALUES (?, ?)';
+    const query = 'INSERT INTO users (username, password, is_admin) VALUES (?, ?, FALSE)';
     db.query(query, [username, hashedPassword], (err) => {
       if (err) {
         if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Username already exists' });
@@ -88,7 +92,7 @@ app.post('/api/login', (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ id: user.id, username: user.username, is_admin: user.is_admin }, JWT_SECRET, { expiresIn: '1h' });
     res.json({ token });
   });
 });
@@ -99,6 +103,65 @@ app.get('/api/parking', (req, res) => {
   db.query(query, (err, results) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     res.json(results);
+  });
+});
+
+// Create a new parking spot (admin only)
+app.post('/api/parking', authenticateToken, isAdmin, (req, res) => {
+  const { location_name, latitude, longitude, total_spots } = req.body;
+  if (!location_name || !latitude || !longitude || !total_spots || total_spots < 0) {
+    return res.status(400).json({ error: 'All fields required with valid values' });
+  }
+
+  const query = 'INSERT INTO parking_spots (location_name, latitude, longitude, total_spots, available_spots, status) VALUES (?, ?, ?, ?, ?, "active")';
+  db.query(query, [location_name, latitude, longitude, total_spots, total_spots], (err) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+
+    const fetchQuery = 'SELECT * FROM parking_spots WHERE status = "active"';
+    db.query(fetchQuery, (err, updatedSpots) => {
+      if (err) return res.status(500).json({ error: 'Failed to fetch updated spots' });
+      io.emit('parkingUpdate', updatedSpots);
+      res.json({ message: 'Parking spot created successfully' });
+    });
+  });
+});
+
+// Update a parking spot (admin only)
+app.put('/api/parking/:id', authenticateToken, isAdmin, (req, res) => {
+  const { id } = req.params;
+  const { total_spots } = req.body;
+
+  if (!total_spots || total_spots < 0) return res.status(400).json({ error: 'Valid total_spots required' });
+
+  const updateQuery = 'UPDATE parking_spots SET total_spots = ? WHERE id = ?';
+  db.query(updateQuery, [total_spots, id], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Parking spot not found' });
+
+    const fetchQuery = 'SELECT * FROM parking_spots WHERE status = "active"';
+    db.query(fetchQuery, (err, updatedSpots) => {
+      if (err) return res.status(500).json({ error: 'Failed to fetch updated spots' });
+      io.emit('parkingUpdate', updatedSpots);
+      res.json({ message: 'Parking spot updated successfully' });
+    });
+  });
+});
+
+// Delete a parking spot (admin only)
+app.delete('/api/parking/:id', authenticateToken, isAdmin, (req, res) => {
+  const { id } = req.params;
+
+  const deleteQuery = 'UPDATE parking_spots SET status = "inactive" WHERE id = ?';
+  db.query(deleteQuery, [id], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Parking spot not found' });
+
+    const fetchQuery = 'SELECT * FROM parking_spots WHERE status = "active"';
+    db.query(fetchQuery, (err, updatedSpots) => {
+      if (err) return res.status(500).json({ error: 'Failed to fetch updated spots' });
+      io.emit('parkingUpdate', updatedSpots);
+      res.json({ message: 'Parking spot deleted successfully' });
+    });
   });
 });
 
@@ -123,12 +186,42 @@ app.post('/api/book', authenticateToken, (req, res) => {
       db.query(insertQuery, [parking_spot_id, user_id], (err) => {
         if (err) return res.status(500).json({ error: 'Failed to record booking' });
 
-        // Fetch updated parking spots and broadcast to all clients
         const fetchQuery = 'SELECT * FROM parking_spots WHERE status = "active"';
         db.query(fetchQuery, (err, updatedSpots) => {
           if (err) return res.status(500).json({ error: 'Failed to fetch updated spots' });
-          io.emit('parkingUpdate', updatedSpots); // Broadcast to all connected clients
+          io.emit('parkingUpdate', updatedSpots);
           res.json({ message: 'Spot booked successfully' });
+        });
+      });
+    });
+  });
+});
+
+// Cancel a booking (protected)
+app.post('/api/cancel', authenticateToken, (req, res) => {
+  const { booking_id } = req.body;
+  const user_id = req.user.id;
+
+  const checkQuery = 'SELECT parking_spot_id FROM bookings WHERE id = ? AND user_id = ?';
+  db.query(checkQuery, [booking_id, user_id], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (results.length === 0) return res.status(404).json({ error: 'Booking not found or not yours' });
+
+    const parking_spot_id = results[0].parking_spot_id;
+
+    const updateQuery = 'UPDATE parking_spots SET available_spots = available_spots + 1 WHERE id = ?';
+    db.query(updateQuery, [parking_spot_id], (err) => {
+      if (err) return res.status(500).json({ error: 'Failed to update spots' });
+
+      const deleteQuery = 'DELETE FROM bookings WHERE id = ?';
+      db.query(deleteQuery, [booking_id], (err) => {
+        if (err) return res.status(500).json({ error: 'Failed to cancel booking' });
+
+        const fetchQuery = 'SELECT * FROM parking_spots WHERE status = "active"';
+        db.query(fetchQuery, (err, updatedSpots) => {
+          if (err) return res.status(500).json({ error: 'Failed to fetch updated spots' });
+          io.emit('parkingUpdate', updatedSpots);
+          res.json({ message: 'Booking cancelled successfully' });
         });
       });
     });
@@ -155,7 +248,6 @@ app.get('/', (req, res) => {
   res.send('Urban Parking Finder API is running!');
 });
 
-// Start the server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
