@@ -8,7 +8,10 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch parking spots from the back-end
+    fetchParkingSpots();
+  }, []);
+
+  const fetchParkingSpots = () => {
     axios.get('http://localhost:5000/api/parking')
       .then((response) => {
         setParkingSpots(response.data);
@@ -18,7 +21,18 @@ function App() {
         console.error('Error fetching parking spots:', error);
         setLoading(false);
       });
-  }, []);
+  };
+
+  const handleBooking = (parkingSpotId) => {
+    axios.post('http://localhost:5000/api/book', { parking_spot_id: parkingSpotId })
+      .then((response) => {
+        alert(response.data.message); // Show success message
+        fetchParkingSpots(); // Refresh the map data
+      })
+      .catch((error) => {
+        alert(error.response?.data?.error || 'Booking failed'); // Show error message
+      });
+  };
 
   if (loading) return <div>Loading...</div>;
 
@@ -28,13 +42,19 @@ function App() {
       <MapContainer center={[9.03, 38.74]} zoom={13} style={{ height: '500px', width: '100%' }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
         {parkingSpots.map((spot) => (
           <Marker key={spot.id} position={[spot.latitude, spot.longitude]}>
             <Popup>
-              {spot.location_name} <br />
-              Available Spots: {spot.available_spots}/{spot.total_spots}
+              <strong>{spot.location_name}</strong> <br />
+              Available Spots: {spot.available_spots}/{spot.total_spots} <br />
+              <button
+                onClick={() => handleBooking(spot.id)}
+                disabled={spot.available_spots === 0}
+              >
+                {spot.available_spots > 0 ? 'Book Now' : 'No Spots Available'}
+              </button>
             </Popup>
           </Marker>
         ))}
