@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = 5000;
-const JWT_SECRET = 'your-secret-key'; // Change this to a secure key in production
+const JWT_SECRET = 'your-secret-key'; // Change this in production
 
 app.use(express.json());
 app.use(cors());
@@ -25,7 +25,7 @@ db.connect((err) => {
 
 // Middleware to verify JWT
 const authenticateToken = (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1]; // Expecting "Bearer <token>"
+  const token = req.headers['authorization']?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
@@ -73,7 +73,7 @@ app.get('/api/parking', (req, res) => {
   });
 });
 
-// Book a parking spot (protected route)
+// Book a parking spot (protected)
 app.post('/api/book', authenticateToken, (req, res) => {
   const { parking_spot_id } = req.body;
   const user_id = req.user.id;
@@ -96,6 +96,22 @@ app.post('/api/book', authenticateToken, (req, res) => {
         res.json({ message: 'Spot booked successfully' });
       });
     });
+  });
+});
+
+// Fetch user’s booking history (protected)
+app.get('/api/bookings', authenticateToken, (req, res) => {
+  const user_id = req.user.id;
+  const query = `
+    SELECT b.id, b.booked_at, p.location_name 
+    FROM bookings b 
+    JOIN parking_spots p ON b.parking_spot_id = p.id 
+    WHERE b.user_id = ?
+    ORDER BY b.booked_at DESC
+  `;
+  db.query(query, [user_id], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    res.json(results);
   });
 });
 
