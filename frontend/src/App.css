@@ -8,6 +8,11 @@ h1 {
   margin-bottom: 20px;
 }
 
+h2 {
+  font-size: 20px;
+  margin: 20px 0;
+}
+
 .leaflet-container {
   height: 500px;
   width: 100%;
@@ -45,4 +50,27 @@ input {
 .logout-btn {
   background-color: #f44336;
   margin-bottom: 20px;
+}
+
+.toggle-btn {
+  background-color: #2196F3;
+  margin-top: 10px;
+}
+
+.booking-history {
+  margin-top: 20px;
+  text-align: left;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.booking-history ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.booking-history li {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
 }

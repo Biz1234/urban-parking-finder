@@ -3,7 +3,11 @@ const mysql = require('mysql2');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const http = require('http');
+const { Server } = require('socket.io');
 const app = express();
+ 
+ 
 const PORT = 5000;
 const JWT_SECRET = 'your-secret-key'; // Change this in production
 
@@ -23,6 +27,23 @@ db.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
+// Create HTTP server and integrate Socket.IO
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:5173', // Allow front-end origin
+    methods: ['GET', 'POST']
+  }
+});
+
+// WebSocket connection
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
 // Middleware to verify JWT
 const authenticateToken = (req, res, next) => {
   const token = req.headers['authorization']?.split(' ')[1];
@@ -38,13 +59,21 @@ const authenticateToken = (req, res, next) => {
 // Register a new user
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
-  const hashedPassword = await bcrypt.hash(password, 10);
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
-  const query = 'INSERT INTO users (username, password) VALUES (?, ?)';
-  db.query(query, [username, hashedPassword], (err) => {
-    if (err) return res.status(400).json({ error: 'Username already exists' });
-    res.json({ message: 'User registered successfully' });
-  });
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const query = 'INSERT INTO users (username, password) VALUES (?, ?)';
+    db.query(query, [username, hashedPassword], (err) => {
+      if (err) {
+        if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Username already exists' });
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ message: 'User registered successfully' });
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Login a user
@@ -93,7 +122,14 @@ app.post('/api/book', authenticateToken, (req, res) => {
       const insertQuery = 'INSERT INTO bookings (parking_spot_id, user_id) VALUES (?, ?)';
       db.query(insertQuery, [parking_spot_id, user_id], (err) => {
         if (err) return res.status(500).json({ error: 'Failed to record booking' });
-        res.json({ message: 'Spot booked successfully' });
+
+        // Fetch updated parking spots and broadcast to all clients
+        const fetchQuery = 'SELECT * FROM parking_spots WHERE status = "active"';
+        db.query(fetchQuery, (err, updatedSpots) => {
+          if (err) return res.status(500).json({ error: 'Failed to fetch updated spots' });
+          io.emit('parkingUpdate', updatedSpots); // Broadcast to all connected clients
+          res.json({ message: 'Spot booked successfully' });
+        });
       });
     });
   });
@@ -119,6 +155,7 @@ app.get('/', (req, res) => {
   res.send('Urban Parking Finder API is running!');
 });
 
-app.listen(PORT, () => {
+// Start the server
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

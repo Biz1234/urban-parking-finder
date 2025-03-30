@@ -5,13 +5,18 @@ import './App.css';
 
 function App() {
   const [parkingSpots, setParkingSpots] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => {
-    if (token) fetchParkingSpots();
+    if (token) {
+      fetchParkingSpots();
+      fetchBookings();
+    }
   }, [token]);
 
   const fetchParkingSpots = () => {
@@ -26,6 +31,18 @@ function App() {
       });
   };
 
+  const fetchBookings = () => {
+    axios.get('http://localhost:5000/api/bookings', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((response) => {
+        setBookings(response.data);
+      })
+      .catch((error) => {
+        console.error('Error fetching bookings:', error);
+      });
+  };
+
   const handleLogin = (e) => {
     e.preventDefault();
     axios.post('http://localhost:5000/api/login', { username, password })
@@ -34,10 +51,23 @@ function App() {
         localStorage.setItem('token', response.data.token);
         setUsername('');
         setPassword('');
-        fetchParkingSpots();
       })
       .catch((error) => {
         alert(error.response?.data?.error || 'Login failed');
+      });
+  };
+
+  const handleRegister = (e) => {
+    e.preventDefault();
+    axios.post('http://localhost:5000/api/register', { username, password })
+      .then((response) => {
+        alert(response.data.message);
+        setIsRegistering(false); // Switch back to login after successful registration
+        setUsername('');
+        setPassword('');
+      })
+      .catch((error) => {
+        alert(error.response?.data?.error || 'Registration failed');
       });
   };
 
@@ -45,6 +75,7 @@ function App() {
     setToken('');
     localStorage.removeItem('token');
     setParkingSpots([]);
+    setBookings([]);
   };
 
   const handleBooking = (parkingSpotId) => {
@@ -54,6 +85,7 @@ function App() {
       .then((response) => {
         alert(response.data.message);
         fetchParkingSpots();
+        fetchBookings();
       })
       .catch((error) => {
         alert(error.response?.data?.error || 'Booking failed');
@@ -63,8 +95,8 @@ function App() {
   if (!token) {
     return (
       <div className="App">
-        <h1>Urban Parking Finder - Login</h1>
-        <form onSubmit={handleLogin}>
+        <h1>Urban Parking Finder - {isRegistering ? 'Register' : 'Login'}</h1>
+        <form onSubmit={isRegistering ? handleRegister : handleLogin}>
           <input
             type="text"
             placeholder="Username"
@@ -79,9 +111,14 @@ function App() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <button type="submit">Login</button>
+          <button type="submit">{isRegistering ? 'Register' : 'Login'}</button>
         </form>
-        <p>Hint: Register with POST to /api/register if you don’t have an account.</p>
+        <button
+          onClick={() => setIsRegistering(!isRegistering)}
+          className="toggle-btn"
+        >
+          {isRegistering ? 'Switch to Login' : 'Switch to Register'}
+        </button>
       </div>
     );
   }
@@ -112,6 +149,20 @@ function App() {
           </Marker>
         ))}
       </MapContainer>
+      <div className="booking-history">
+        <h2>Your Booking History</h2>
+        {bookings.length === 0 ? (
+          <p>No bookings yet.</p>
+        ) : (
+          <ul>
+            {bookings.map((booking) => (
+              <li key={booking.id}>
+                {booking.location_name} - Booked on {new Date(booking.booked_at).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
